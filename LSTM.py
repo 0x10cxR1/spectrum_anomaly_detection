@@ -15,6 +15,7 @@ import keras
 from keras.layers import Input
 from sklearn.metrics import mean_squared_error
 from keras.layers.normalization import BatchNormalization
+from opts import parse_opts_offline
 
 
 def CDF(data_list,cut_off_value,down_sample_rate,x_shrink_rate,out):
@@ -83,10 +84,10 @@ class DataGenerator():
 
 
 def train_LSTM(t_filename, v_filename, model_filename, weights_filename):
-    train_generator = DataGenerator(t_filename, batch_size=batch_size, timesteps=timesteps, data_dim=data_dim, predict_steps=predict_steps).generate()
-    valid_generator = DataGenerator(v_filename, batch_size=batch_size, timesteps=timesteps, data_dim=data_dim, predict_steps=predict_steps).generate()
-    t_len = int(train_num) // batch_size
-    v_len = int(valid_num) // batch_size
+    train_generator = DataGenerator(t_filename, batch_size=opt.batch_size, timesteps=opt.timesteps, data_dim=opt.data_dim, predict_steps=opt.predict_steps).generate()
+    valid_generator = DataGenerator(v_filename, batch_size=opt.batch_size, timesteps=opt.timesteps, data_dim=opt.data_dim, predict_steps=opt.predict_steps).generate()
+    t_len = int(opt.train_num) // opt.batch_size
+    v_len = int(opt.valid_num) // opt.batch_size
 
     callbacks = [
     keras.callbacks.TensorBoard(log_dir='./Graph', histogram_freq=0, write_graph=True, write_images=True),
@@ -96,19 +97,19 @@ def train_LSTM(t_filename, v_filename, model_filename, weights_filename):
 
 
     model = Sequential()
-    model.add(LSTM(hidden_size, input_shape=(timesteps, data_dim,), return_sequences=True, stateful=False))
+    model.add(LSTM(opt.hidden_size, input_shape=(opt.timesteps, opt.data_dim,), return_sequences=True, stateful=False))
     model.add(BatchNormalization())
-    model.add(LSTM(hidden_size, return_sequences=True))
+    model.add(LSTM(opt.hidden_size, return_sequences=True))
     model.add(BatchNormalization())
-    model.add(LSTM(hidden_size))
+    model.add(LSTM(opt.hidden_size))
     model.add(BatchNormalization())
-    model.add(Dense(data_dim*predict_steps))
+    model.add(Dense(opt.data_dim*opt.predict_steps))
 
 
     print('Training Begin')
 
     model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit_generator(generator=train_generator, epochs=epochs,
+    model.fit_generator(generator=train_generator, epochs=opt.epochs,
                         steps_per_epoch=t_len, callbacks=callbacks, validation_data=valid_generator, validation_steps=v_len)
     model.save(model_filename)
     model.save_weights(weights_filename)
@@ -116,10 +117,10 @@ def train_LSTM(t_filename, v_filename, model_filename, weights_filename):
 
 
 def transfer_LSTM(t_filename, v_filename, old_weights_filename, model_filename, weights_filename):
-    train_generator = DataGenerator(t_filename, batch_size=batch_size, timesteps=timesteps, data_dim=data_dim, predict_steps=predict_steps).generate()
-    valid_generator = DataGenerator(v_filename, batch_size=batch_size, timesteps=timesteps, data_dim=data_dim, predict_steps=predict_steps).generate()
-    t_len = int(train_num) // batch_size
-    v_len = int(valid_num) // batch_size
+    train_generator = DataGenerator(t_filename, batch_size=opt.batch_size, timesteps=opt.timesteps, data_dim=opt.data_dim, predict_steps=opt.predict_steps).generate()
+    valid_generator = DataGenerator(v_filename, batch_size=opt.batch_size, timesteps=opt.timesteps, data_dim=opt.data_dim, predict_steps=opt.predict_steps).generate()
+    t_len = int(opt.train_num) // opt.batch_size
+    v_len = int(opt.valid_num) // opt.batch_size
 
     callbacks = [
     keras.callbacks.TensorBoard(log_dir='./Graph', histogram_freq=0, write_graph=True, write_images=True),
@@ -128,13 +129,13 @@ def transfer_LSTM(t_filename, v_filename, old_weights_filename, model_filename, 
 
 
     model = Sequential()
-    model.add(LSTM(hidden_size, input_shape=(timesteps, data_dim,), return_sequences=True, stateful=False))
+    model.add(LSTM(opt.hidden_size, input_shape=(opt.timesteps, opt.data_dim,), return_sequences=True, stateful=False))
     model.add(BatchNormalization())
-    model.add(LSTM(hidden_size))
+    model.add(LSTM(opt.hidden_size))
     model.add(BatchNormalization())
-    #model.add(LSTM(hidden_size))
+    #model.add(LSTM(opt.hidden_size))
     #model.add(BatchNormalization())
-    model.add(Dense(data_dim*predict_steps))
+    model.add(Dense(opt.data_dim*opt.predict_steps))
 
     model.load_weights(old_weights_filename)
 
@@ -145,7 +146,7 @@ def transfer_LSTM(t_filename, v_filename, old_weights_filename, model_filename, 
     print('Training Begin')
 
     model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit_generator(generator=train_generator, epochs=epochs,
+    model.fit_generator(generator=train_generator, epochs=opt.epochs,
                         steps_per_epoch=t_len, callbacks=callbacks, validation_data=valid_generator, validation_steps=v_len)
     model.save(model_filename)
     model.save_weights(weights_filename)
@@ -160,12 +161,16 @@ def test_LSTM(t_filename, model_filename, out_filename, out_filename_cdf):
     line_num = 0
     x = []
     y = []
+    num = 0
     with open(t_filename, 'r') as f:
         for line in f:
+            num += 1
+            if num > 2000:
+                break
             if line_num%200 == 0 and line_num>0:
                 print(len(x))
-                test_x = np.reshape(x, (200, timesteps, data_dim))
-                test_y = np.reshape(y, (200, data_dim*predict_steps))
+                test_x = np.reshape(x, (200, opt.timesteps, opt.data_dim))
+                test_y = np.reshape(y, (200, opt.data_dim*opt.predict_steps))
                 predict_y = model.predict(test_x)
                 for j in range(len(predict_y)):
                     mse = mean_squared_error(test_y[j], predict_y[j])
@@ -175,8 +180,8 @@ def test_LSTM(t_filename, model_filename, out_filename, out_filename_cdf):
                 y = []
 
             data_test = line.split()
-            x1_test = [float(data_test[i]) for i in range(timesteps*data_dim)]
-            y1_test = [float(data_test[i]) for i in range(timesteps*data_dim, (timesteps+predict_steps)*data_dim)]
+            x1_test = [float(data_test[i]) for i in range(opt.timesteps*opt.data_dim)]
+            y1_test = [float(data_test[i]) for i in range(opt.timesteps*opt.data_dim, (opt.timesteps+opt.predict_steps)*opt.data_dim)]
             x.append(x1_test)
             y.append(y1_test)
             line_num += 1
@@ -187,43 +192,21 @@ def test_LSTM(t_filename, model_filename, out_filename, out_filename_cdf):
 
 
 def main():
-    gpu_num = "3"
+    gpu_num = "1"
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_num
     import gc
     gc.disable()
     fix_gpu_memory()
 
-    global batch_size, timesteps, predict_steps, data_dim, epochs, hidden_size, train_num, test_num, valid_num
-    batch_size = 64
-    timesteps = 50
-    predict_steps = 25
-    data_dim = 128
-    epochs = 50
-    hidden_size = 64
-    train_num = 200000
-    valid_num = 5000
-    test_num = 100000
+    global opt
+    opt = parse_opts_offline()
 
-    cmd = sys.argv[1]
-    if cmd == "train":
-        t_filename = sys.argv[2]
-        v_filename = sys.argv[3]
-        model_filename = sys.argv[4]
-        weights_filename = sys.argv[5]
-        train_LSTM(t_filename, v_filename, model_filename, weights_filename)
-    if cmd == "test":
-        t_filename = sys.argv[2]
-        out_filename = sys.argv[3]
-        out_filename_cdf = sys.argv[4]
-        model_filename = sys.argv[5]
-        test_LSTM(t_filename, model_filename, out_filename, out_filename_cdf)
-    if cmd == "transfer":
-        t_filename = sys.argv[2]
-        v_filename = sys.argv[3]
-        old_weights_filename = sys.argv[4]
-        model_filename = sys.argv[5]
-        weights_filename = sys.argv[6]
-        transfer_LSTM(t_filename, v_filename, old_weights_filename, model_filename, weights_filename)
+    if opt.cmd == "train":
+        train_LSTM(opt.training_path, opt.validation_path, opt.model_path, opt.weight_path)
+    if opt.cmd == "test":
+        test_LSTM(opt.testing_path, opt.oldmodel_path, opt.testing_res, opt.testing_res_CDF)
+    if opt.cmd == "transfer":
+        train(opt.training_path, opt.validation_path, opt.oldmodel_weight_path, opt.model_path, opt.weight_path)
 
 
 if __name__ == '__main__':

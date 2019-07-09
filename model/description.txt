@@ -1,1 +1,1 @@
-Models of LTE 880MHz band transmission and 729MHz band transmission.
+Models of LTE 880MHz band transmission.
